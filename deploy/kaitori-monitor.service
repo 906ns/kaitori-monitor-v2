@@ -1,0 +1,18 @@
+# ラズパイ用 systemd ユニット。
+# 配置: sudo cp deploy/kaitori-monitor.service /etc/systemd/system/
+# パスとユーザー名は環境に合わせて変更すること。
+[Unit]
+Description=Kaitori Shouten price monitor Discord bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/kaitori-monitor-v2
+ExecStart=/home/pi/kaitori-monitor-v2/venv/bin/python -m kaitori_monitor
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

@@ -2,8 +2,41 @@
 
 [買取商店](https://www.kaitorishouten-co.jp/) の買取価格を監視し、Discord に通知する bot。
 
-> **状態: 要件定義・設計フェーズ(未実装)**
-> 本ドキュメントは確定した要件と設計をまとめたもの。実装コードはまだ含まれていない。
+> **状態: 実装済み(動作確認: スクレイパーは実サイトで検証済み。Discord bot はラズパイ上で bot トークンを設定して起動する)**
+
+## クイックスタート(ラズパイでのセットアップ)
+
+```bash
+git clone https://github.com/906ns/kaitori-monitor-v2.git
+cd kaitori-monitor-v2
+python3 -m venv venv
+venv/bin/pip install -r requirements.txt
+
+cp .env.example .env                                # 編集: botトークンとチャンネルID
+cp config/targets.yaml.example config/targets.yaml  # 編集: 監視対象の初期リスト
+
+venv/bin/python -m kaitori_monitor                  # 起動
+```
+
+Discord bot は [Discord Developer Portal](https://discord.com/developers/applications) で作成し、
+`applications.commands` と `bot` スコープ(Send Messages 権限)でサーバーに招待しておく。
+
+### Discord コマンド
+
+| コマンド | 動作 |
+|---|---|
+| `/add <JANまたは商品名>` | 監視対象に追加。複数ヒット時は選択メニューが出る |
+| `/remove <番号またはJAN>` | 監視対象から削除(番号は `/list` 表示のもの) |
+| `/list` | 監視対象の一覧と前回価格 |
+| `/price [キーワード]` | その場で価格照会。省略時は全監視対象、指定時は検索(未登録商品も可) |
+| `/settime <HH:MM>` | 毎日の通知時刻を変更(JST、既定 09:00) |
+
+### スクレイパー単体での確認
+
+```bash
+venv/bin/python -m kaitori_monitor.scraper 4549995536447
+# [21140] iPhone 16 Pro Max 256GB 金  JAN:4549995536447  新品:188,000円  中古:137,000円
+```
 
 ---
 
@@ -139,15 +172,35 @@ name=<JANコードまたは商品名>&page_type=1
 - `targets(id, jan, name, product_key, added_at)` — 監視対象
 - `price_history(id, target_id, price, fetched_at, status)` — 取得ごとの価格履歴(前回比表示・将来のグラフ化に利用)
 
-## 7. ラズパイへのデプロイ(実装後の手順概要)
+## 7. ラズパイでの常時稼働(systemd)
 
-1. Python 3.11+ と `venv` を用意し、`pip install -r requirements.txt`
-2. `.env` に Discord bot トークンとチャンネル ID を設定(トークンはリポジトリにコミットしない)
-3. `systemd` ユニット(`kaitori-monitor.service`)を配置し、自動起動・異常終了時の再起動を設定
+クイックスタートの手順で起動確認したあと、自動起動を設定する:
 
-## 8. 今後の進め方
+```bash
+sudo cp deploy/kaitori-monitor.service /etc/systemd/system/
+# ユニット内の User= と WorkingDirectory= を自分の環境に合わせて編集
+sudo systemctl daemon-reload
+sudo systemctl enable --now kaitori-monitor
+journalctl -u kaitori-monitor -f   # ログ確認
+```
 
-1. ~~サイトにアクセスできる環境で §5 の未確定事項を確認~~ ✅ 確認済み(2026-07-07)
-2. **(次のステップ)** スクレイパー単体を実装・検証
-3. Discord bot(コマンド + 定期通知)を実装
-4. ラズパイに systemd サービスとしてデプロイ
+## 8. プロジェクト構成
+
+```
+kaitori_monitor/
+├── __main__.py   # エントリポイント (python -m kaitori_monitor)
+├── config.py     # .env と targets.yaml の読み込み
+├── scraper.py    # サイト内検索スクレイパー(単体CLIあり)
+├── storage.py    # SQLite(監視対象・価格履歴・設定)
+└── bot.py        # Discord bot(スラッシュコマンド+毎日の定期通知)
+tests/            # パーサのユニットテスト
+deploy/           # systemd ユニット
+config/           # targets.yaml.example
+```
+
+## 9. 進捗
+
+1. ~~サイト構造の調査~~ ✅ (2026-07-07)
+2. ~~スクレイパー実装・実サイトで検証~~ ✅ (JAN検索・商品名検索・価格抽出を確認)
+3. ~~Discord bot(コマンド + 定期通知)実装~~ ✅ (ユニットテスト・インポート確認済み)
+4. **(次のステップ)** ラズパイにデプロイし、bot トークンを設定して実運用確認
